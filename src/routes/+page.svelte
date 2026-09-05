@@ -13,6 +13,8 @@
 		assignObservation
 	} from '$lib/services/capture';
 	import { formatTimeHundredths } from '$lib/time/clock';
+	import { Draft } from '$lib/services/drafts.svelte';
+	import { onMount } from 'svelte';
 	import { DIRECTION_LABELS } from '$lib/domain/legs';
 	import { QUICK_PHRASE_DISCLAIMER } from '$lib/domain/phrases';
 	import type { Direction, Id } from '$lib/domain/types';
@@ -22,23 +24,40 @@
 	// writes a timestamp with no racer attached.
 	let selectedParticipant = $state<Id | null>(null);
 	let classFilter = $state('');
-	let customBoat = $state('');
-	let notes = $state('');
 	let uncertain = $state(false);
 	let directionOverride = $state<Direction | ''>('');
 	let massSelection = $state<Id[]>([]);
 	let showMassStart = $state(false);
 	let radioOpen = $state(false);
-	let radioText = $state('');
-	let radioFrom = $state('');
-	let radioBoats = $state('');
 	let radioPriority = $state<'routine' | 'priority' | 'emergency'>('routine');
+	let radioNoHeat = $state(false);
 	let checkpointPassOpen = $state(false);
 	let checkpointId = $state<Id | ''>('');
 	let checkpointBoat = $state('');
 	let noteOpen = $state(false);
 	let noteText = $state('');
 	let lastMessage = $state<string | null>(null);
+
+	/**
+	 * What has been typed but not yet committed survives a reload. The inputs
+	 * bind straight to the draft, so there is no copy step that could race the
+	 * load and no way for an empty form to overwrite stored text. Restoring a
+	 * draft never creates a record — it only puts the text back in the boxes.
+	 */
+	const draft = new Draft('live', {
+		customBoat: '',
+		notes: '',
+		radioText: '',
+		radioFrom: '',
+		radioBoats: ''
+	});
+
+	onMount(async () => {
+		await draft.load();
+		if (draft.value.radioText || draft.value.radioFrom || draft.value.radioBoats) {
+			radioOpen = true;
+		}
+	});
 
 	const classes = $derived(
 		Array.from(
@@ -61,9 +80,9 @@
 	function common() {
 		return {
 			participantId: selectedParticipant,
-			unassignedBoatText: selectedParticipant ? null : customBoat.trim() || null,
+			unassignedBoatText: selectedParticipant ? null : draft.value.customBoat.trim() || null,
 			direction: currentDirection,
-			notes: notes.trim(),
+			notes: draft.value.notes.trim(),
 			uncertainIdentification: uncertain
 		};
 	}
@@ -73,23 +92,24 @@
 	 * operator can fire repeatedly without re-choosing anything.
 	 */
 	function clearAfterCapture() {
-		customBoat = '';
-		notes = '';
+		draft.set('customBoat', '');
+		draft.set('notes', '');
 		uncertain = false;
 	}
 
 	async function record(instant: ClockInstant, type: 'pass' | 'start' | 'finish' | 'sweep') {
-		const draft =
+		// A sweep is not about a racer, so it never carries a boat selection.
+		const observation =
 			type === 'sweep'
 				? {
 						type,
 						direction: currentDirection,
-						notes: notes.trim(),
+						notes: draft.value.notes.trim(),
 						participantId: null,
 						unassignedBoatText: null
 					}
 				: { type, ...common() };
-		const ok = await captureObservation(instant, draft);
+		const ok = await captureObservation(instant, observation);
 		lastMessage = ok
 			? `${type} recorded at ${formatTimeHundredths(instant.epoch, app.timezone)}`
 			: `${type} FAILED to save — see the banner above`;
@@ -102,7 +122,7 @@
 			source: 'radio',
 			participantId: null,
 			unassignedBoatText: null,
-			notes: notes.trim()
+			notes: draft.value.notes.trim()
 		});
 		lastMessage = ok
 			? 'Heat-complete radio call recorded. It does not close the heat or fill in any missing observation.'
@@ -117,7 +137,7 @@
 		}
 		const ok = await captureMassStart(instant, massSelection, {
 			direction: currentDirection,
-			notes: notes.trim()
+			notes: draft.value.notes.trim()
 		});
 		lastMessage = ok
 			? `Mass start recorded for ${massSelection.length} boat(s) with one shared time.`
@@ -132,20 +152,20 @@
 	async function submitRadio(instant: ClockInstant) {
 		const ok = await captureRadio(instant, {
 			direction: 'received',
-			fromParty: radioFrom.trim(),
-			message: radioText.trim(),
-			boatNumbers: radioBoats
+			fromParty: draft.value.radioFrom.trim(),
+			message: draft.value.radioText.trim(),
+			boatNumbers: draft.value.radioBoats
 				.split(/[\s,]+/)
 				.map((s) => s.trim())
 				.filter(Boolean),
 			priority: radioPriority,
-			heatId: app.heatId
+			heatId: radioNoHeat ? null : app.heatId
 		});
 		lastMessage = ok ? 'Radio message logged.' : 'Radio message FAILED to save.';
 		if (ok) {
-			radioText = '';
-			radioBoats = '';
-			radioFrom = '';
+			draft.set('radioText', '');
+			draft.set('radioBoats', '');
+			draft.set('radioFrom', '');
 			radioPriority = 'routine';
 			radioOpen = false;
 		}
@@ -159,7 +179,7 @@
 			checkpointName: app.checkpoints.find((c) => c.id === checkpointId)?.name ?? '',
 			unassignedBoatText: checkpointBoat.trim() || null,
 			participantId: null,
-			notes: notes.trim()
+			notes: draft.value.notes.trim()
 		});
 		lastMessage = ok
 			? 'Checkpoint report logged with the time you received it. Add the reported occurrence time later if given.'
@@ -216,8 +236,8 @@
 	<span class="sub"
 		>{selectedParticipant
 			? `Boat ${app.boatNumberFor(selectedParticipant)}`
-			: customBoat
-				? `Boat ${customBoat}`
+			: draft.value.customBoat
+				? `Boat ${draft.value.customBoat}`
 				: 'Unassigned — add the boat later'}</span
 	>
 </CaptureButton>
@@ -265,6 +285,23 @@
 	</button>
 </div>
 
+{#if app.reviewPrompts.length > 0}
+	<div class="card prompts no-print">
+		<h3>Review prompts ({app.reviewPrompts.length})</h3>
+		<ul class="plain small">
+			{#each app.reviewPrompts.slice(0, 4) as prompt (prompt.key)}
+				<li class:attention={prompt.severity === 'attention'}>
+					<strong>{prompt.title}</strong> — {prompt.detail}
+				</li>
+			{/each}
+		</ul>
+		<p class="small muted">
+			Advisory only. Nothing is changed for you, and none of this blocks capture.
+			<a href="{base}/timeline">See all</a>
+		</p>
+	</div>
+{/if}
+
 <div class="card">
 	<h3>Capture options</h3>
 	<div class="row">
@@ -307,17 +344,25 @@
 			<label for="custom-boat">Boat number (letters allowed)</label>
 			<input
 				id="custom-boat"
-				bind:value={customBoat}
+				bind:value={draft.value.customBoat}
 				inputmode="text"
 				autocomplete="off"
 				autocapitalize="characters"
 				placeholder="e.g. 07B"
-				oninput={() => (selectedParticipant = null)}
+				oninput={() => {
+					selectedParticipant = null;
+					draft.save();
+				}}
 			/>
 		</div>
 		<div class="field">
 			<label for="obs-notes">Observation notes</label>
-			<input id="obs-notes" bind:value={notes} placeholder="Optional" />
+			<input
+				id="obs-notes"
+				bind:value={draft.value.notes}
+				placeholder="Optional"
+				oninput={() => draft.save()}
+			/>
 		</div>
 		<div class="field" style="flex: 0 0 auto">
 			<label for="uncertain">Uncertain ID</label>
@@ -344,7 +389,7 @@
 		{classFilter}
 		onPick={(id) => {
 			selectedParticipant = selectedParticipant === id ? null : id;
-			customBoat = '';
+			draft.set('customBoat', '');
 		}}
 	/>
 </div>
@@ -378,23 +423,42 @@
 		<h3>Radio message received</h3>
 		<div class="field">
 			<label for="radio-from">From</label>
-			<input id="radio-from" bind:value={radioFrom} placeholder="Race control / Checkpoint 3" />
+			<input
+				id="radio-from"
+				bind:value={draft.value.radioFrom}
+				placeholder="Race control / Checkpoint 3"
+				oninput={() => draft.save()}
+			/>
 		</div>
 		<div class="field">
 			<label for="radio-boats">Boat number(s)</label>
-			<input id="radio-boats" bind:value={radioBoats} placeholder="Space or comma separated" />
+			<input
+				id="radio-boats"
+				bind:value={draft.value.radioBoats}
+				placeholder="Space or comma separated"
+				oninput={() => draft.save()}
+			/>
 		</div>
 		<div class="field">
 			<label for="radio-text">Message</label>
-			<textarea id="radio-text" bind:value={radioText}></textarea>
+			<textarea id="radio-text" bind:value={draft.value.radioText} oninput={() => draft.save()}
+			></textarea>
 		</div>
-		<div class="field">
-			<label for="radio-priority">Priority</label>
-			<select id="radio-priority" bind:value={radioPriority}>
-				<option value="routine">Routine</option>
-				<option value="priority">Priority</option>
-				<option value="emergency">Emergency</option>
-			</select>
+		<div class="row">
+			<div class="field">
+				<label for="radio-priority">Priority</label>
+				<select id="radio-priority" bind:value={radioPriority}>
+					<option value="routine">Routine</option>
+					<option value="priority">Priority</option>
+					<option value="emergency">Emergency</option>
+				</select>
+			</div>
+			<div class="field" style="flex:0 0 auto">
+				<label class="inline" for="radio-no-heat">
+					<input id="radio-no-heat" type="checkbox" bind:checked={radioNoHeat} />
+					Not tied to a heat
+				</label>
+			</div>
 		</div>
 		<CaptureButton variant="primary" label="Log radio message" onCapture={submitRadio} />
 	</div>
@@ -542,5 +606,22 @@
 	}
 	.bad {
 		color: var(--bad);
+	}
+	.prompts li {
+		padding: 0.2rem 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.prompts li.attention {
+		color: var(--warn);
+	}
+	.inline {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin: 0;
+	}
+	.inline input {
+		width: 1.4rem;
+		min-height: 1.4rem;
 	}
 </style>

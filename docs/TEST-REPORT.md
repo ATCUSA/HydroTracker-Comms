@@ -46,13 +46,13 @@ tests exercise real transaction semantics, not mocks.
 
 ---
 
-## End-to-end tests — 30 scenarios, run twice
+## End-to-end tests — 36 scenarios, run twice
 
 Run with `npm run test:e2e` against the **production build** served over
 `http://localhost`, which browsers treat as a secure context — the same
 conditions the app requires in the field over HTTPS.
 
-Both projects executed all 30 scenarios and all passed.
+Both projects executed all 36 scenarios and all passed.
 
 ### Acceptance scenarios covered
 
@@ -102,6 +102,20 @@ Both projects executed all 30 scenarios and all passed.
 - Capture controls stay reachable with an incident open.
 - Incident actions are timestamped, linked, and appear on the timeline as
   unresolved.
+
+**Setup and configuration** (`setup.spec.ts`)
+
+- The demo race is labelled `[DEMO]` in the event list, "Demo data — not a real
+  log" on screen and "DEMO DATA — NOT A REAL LOG" on its printed checklist; it
+  is a separate event, and deleting it leaves the real event untouched.
+- Quick phrases are editable in Setup and the new one appears and logs on Live.
+- A lineup imports from a CSV whose layout does not match the printed checklist,
+  via manual column mapping, preserving `007` and `4B` as text.
+- A radio message can be logged with no heat attached and is excluded when
+  filtering by heat.
+- An unsent draft (observation note and a half-typed radio message) survives a
+  reload without creating any record.
+- A radio message can be voided and restored, not only an observation.
 
 **Reports and backup** (`reports.spec.ts`)
 

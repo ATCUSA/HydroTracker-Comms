@@ -203,15 +203,47 @@ export async function correctObservation(
 	});
 }
 
-export async function voidObservation(observationId: Id, reason: string): Promise<boolean> {
+/** Tables the timeline can void, restore and re-time. */
+export type TimelineTable = 'observations' | 'radio' | 'eventLog' | 'incidentActions';
+
+export async function voidEntry(table: TimelineTable, id: Id, reason: string): Promise<boolean> {
 	return saveQueue.submit('Void record', nowMs(), async () => {
-		await voidRecord('observations', observationId, { ...app.writeContext, reason });
+		await voidRecord(table, id, { ...app.writeContext, reason });
 	});
 }
 
-export async function restoreObservation(observationId: Id, reason: string): Promise<boolean> {
+export async function restoreEntry(table: TimelineTable, id: Id, reason: string): Promise<boolean> {
 	return saveQueue.submit('Restore record', nowMs(), async () => {
-		await restoreRecord('observations', observationId, { ...app.writeContext, reason });
+		await restoreRecord(table, id, { ...app.writeContext, reason });
+	});
+}
+
+export async function voidObservation(observationId: Id, reason: string): Promise<boolean> {
+	return voidEntry('observations', observationId, reason);
+}
+
+export async function restoreObservation(observationId: Id, reason: string): Promise<boolean> {
+	return restoreEntry('observations', observationId, reason);
+}
+
+/**
+ * Re-times a radio message or event-log entry. As with observations, the
+ * capture time is untouched: only the effective and reported times move, and
+ * the change is recorded with the operator's reason.
+ */
+export async function correctEntryTimes(
+	table: 'radio' | 'eventLog' | 'incidentActions',
+	id: Id,
+	changes: { effectiveTime?: number; reportedTime?: number | null },
+	reason: string
+): Promise<boolean> {
+	const db = getDb();
+	const existing = await (
+		db[table] as unknown as { get: (id: Id) => Promise<Record<string, unknown> | undefined> }
+	).get(id);
+	if (!existing) return false;
+	return saveQueue.submit('Correction', nowMs(), async () => {
+		await saveRecord(table, { ...existing, ...changes } as never, { ...app.writeContext, reason });
 	});
 }
 

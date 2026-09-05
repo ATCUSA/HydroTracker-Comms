@@ -327,7 +327,7 @@ same place.
 
 ```bash
 npm test          # 154 unit and integration tests
-npm run test:e2e  # 30 end-to-end scenarios per browser project
+npm run test:e2e  # 36 end-to-end scenarios per browser project
 ```
 
 The unit suite covers coordinate conversion and parsing (hemispheres, the
@@ -343,8 +343,9 @@ airplane-mode cold-open of every screen, rapid distinct captures, one tap
 producing exactly one observation, capture while a form is incomplete, mass
 start, continuous down-and-back, heat-complete versus closing, non-reporting
 checkpoints, corrections with audit history, void and restore, geolocation
-denial, explicit-only incident relocation, exports, and backup round-trip and
-rejection.
+denial, explicit-only incident relocation, exports, backup round-trip and
+rejection, demo-data separation, quick-phrase editing, lineup import from a
+non-matching layout, and draft survival across a reload.
 
 [docs/TEST-REPORT.md](docs/TEST-REPORT.md) records what was actually run, on
 what, and what was not.

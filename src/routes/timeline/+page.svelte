@@ -7,7 +7,13 @@
 		type TimelineKind
 	} from '$lib/domain/timeline';
 	import { formatDateTime, formatTimeHundredths, parseLocalTimeOnDay } from '$lib/time/clock';
-	import { correctObservation, restoreObservation, voidObservation } from '$lib/services/capture';
+	import {
+		correctEntryTimes,
+		correctObservation,
+		restoreEntry,
+		voidEntry,
+		type TimelineTable
+	} from '$lib/services/capture';
 	import { revisionsFor } from '$lib/db/repo';
 	import type { AuditRevision, Direction, Id } from '$lib/domain/types';
 	import { DIRECTION_LABELS } from '$lib/domain/legs';
@@ -77,6 +83,10 @@
 		history = await revisionsFor(entry.id);
 	}
 
+	/** Records the timeline can correct, void and restore. */
+	const EDITABLE: TimelineTable[] = ['observations', 'radio', 'eventLog', 'incidentActions'];
+	const isEditable = (table: string) => EDITABLE.includes(table as TimelineTable);
+
 	async function saveEdit() {
 		if (!editing) return;
 		if (!editReason.trim()) {
@@ -95,19 +105,30 @@
 			editError = 'Reported occurrence time must look like HH:MM, HH:MM:SS or HH:MM:SS.hh.';
 			return;
 		}
-		const ok = await correctObservation(
-			editing.id,
-			{
-				effectiveTime: effective ?? editing.effectiveTime,
-				reportedTime: reported,
-				participantId: editParticipant || null,
-				heatId: editHeat || null,
-				legId: editLeg || null,
-				direction: editDirection,
-				notes: editNotes
-			},
-			editReason.trim()
-		);
+		const ok =
+			editing.table === 'observations'
+				? await correctObservation(
+						editing.id,
+						{
+							effectiveTime: effective ?? editing.effectiveTime,
+							reportedTime: reported,
+							participantId: editParticipant || null,
+							heatId: editHeat || null,
+							legId: editLeg || null,
+							direction: editDirection,
+							notes: editNotes
+						},
+						editReason.trim()
+					)
+				: await correctEntryTimes(
+						editing.table as 'radio' | 'eventLog' | 'incidentActions',
+						editing.id,
+						{
+							effectiveTime: effective ?? editing.effectiveTime,
+							reportedTime: reported
+						},
+						editReason.trim()
+					);
 		if (!ok) {
 			editError = 'The correction did not save. It has not been applied.';
 			return;
@@ -119,11 +140,11 @@
 	async function onVoid(entry: TimelineEntry) {
 		const reason = prompt('Reason for voiding this record? It stays reviewable and restorable.');
 		if (reason === null) return;
-		await voidObservation(entry.id, reason || 'No reason given');
+		await voidEntry(entry.table as TimelineTable, entry.id, reason || 'No reason given');
 	}
 
 	async function onRestore(entry: TimelineEntry) {
-		await restoreObservation(entry.id, 'Restored by operator');
+		await restoreEntry(entry.table as TimelineTable, entry.id, 'Restored by operator');
 	}
 
 	const kinds: TimelineKind[] = [
@@ -234,7 +255,7 @@
 					{#if entry.detail}<div class="small">{entry.detail}</div>{/if}
 				</div>
 				<div class="actions no-print">
-					{#if entry.table === 'observations'}
+					{#if isEditable(entry.table)}
 						<button class="small" onclick={() => openEdit(entry)}>Edit…</button>
 						{#if entry.voided}
 							<button class="small" onclick={() => onRestore(entry)}>Restore</button>
@@ -275,45 +296,52 @@
 				/>
 			</div>
 		</div>
-		<div class="row">
-			<div class="field">
-				<label for="e-heat">Heat</label>
-				<select id="e-heat" bind:value={editHeat}>
-					<option value="">— none —</option>
-					{#each app.heats as heat (heat.id)}<option value={heat.id}>{heat.name}</option>{/each}
-				</select>
+		{#if editing.table === 'observations'}
+			<div class="row">
+				<div class="field">
+					<label for="e-heat">Heat</label>
+					<select id="e-heat" bind:value={editHeat}>
+						<option value="">— none —</option>
+						{#each app.heats as heat (heat.id)}<option value={heat.id}>{heat.name}</option>{/each}
+					</select>
+				</div>
+				<div class="field">
+					<label for="e-leg">Leg</label>
+					<select id="e-leg" bind:value={editLeg}>
+						<option value="">— none —</option>
+						{#each editHeat ? app.legsOf(editHeat) : [] as leg (leg.id)}
+							<option value={leg.id}>{leg.name}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="field">
+					<label for="e-boat">Boat</label>
+					<select id="e-boat" bind:value={editParticipant}>
+						<option value="">— unassigned —</option>
+						{#each editHeat ? app.participantsOf(editHeat) : [] as p (p.id)}
+							<option value={p.id}>{app.racerById(p.racerId)?.boatNumber}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="field">
+					<label for="e-dir">Direction</label>
+					<select id="e-dir" bind:value={editDirection}>
+						{#each Object.entries(DIRECTION_LABELS) as [value, label] (value)}
+							<option {value}>{label}</option>
+						{/each}
+					</select>
+				</div>
 			</div>
 			<div class="field">
-				<label for="e-leg">Leg</label>
-				<select id="e-leg" bind:value={editLeg}>
-					<option value="">— none —</option>
-					{#each editHeat ? app.legsOf(editHeat) : [] as leg (leg.id)}
-						<option value={leg.id}>{leg.name}</option>
-					{/each}
-				</select>
+				<label for="e-notes">Notes</label>
+				<input id="e-notes" bind:value={editNotes} />
 			</div>
-			<div class="field">
-				<label for="e-boat">Boat</label>
-				<select id="e-boat" bind:value={editParticipant}>
-					<option value="">— unassigned —</option>
-					{#each editHeat ? app.participantsOf(editHeat) : [] as p (p.id)}
-						<option value={p.id}>{app.racerById(p.racerId)?.boatNumber}</option>
-					{/each}
-				</select>
-			</div>
-			<div class="field">
-				<label for="e-dir">Direction</label>
-				<select id="e-dir" bind:value={editDirection}>
-					{#each Object.entries(DIRECTION_LABELS) as [value, label] (value)}
-						<option {value}>{label}</option>
-					{/each}
-				</select>
-			</div>
-		</div>
-		<div class="field">
-			<label for="e-notes">Notes</label>
-			<input id="e-notes" bind:value={editNotes} />
-		</div>
+		{:else}
+			<p class="small muted">
+				For a {editing.kind} entry the timeline corrects the times. Edit its other fields on the screen
+				that created it.
+			</p>
+		{/if}
 		<div class="field">
 			<label for="e-reason">Reason for the correction (required)</label>
 			<input id="e-reason" bind:value={editReason} />

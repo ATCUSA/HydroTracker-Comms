@@ -26,6 +26,8 @@
 	import { createDemoRace, deleteDemoRace } from '$lib/services/demo';
 	import { LEG_FORMAT_LABELS, LEG_FORMAT_NOTES, DIRECTION_LABELS } from '$lib/domain/legs';
 	import { deviceTimezone, formatDateTime, listTimezones } from '$lib/time/clock';
+	import { DEFAULT_QUICK_PHRASES, type QuickPhrase } from '$lib/domain/phrases';
+	import { newId } from '$lib/domain/ids';
 	import { parseCoordinateText, formatCoordinates } from '$lib/geo/coordinates';
 	import LineupImport from '$lib/components/LineupImport.svelte';
 	import type { HeatParticipant, Id, LegFormat, ParticipationState } from '$lib/domain/types';
@@ -61,6 +63,8 @@
 	let cpName = $state('');
 	let cpReports = $state(true);
 	let overdueMinutes = $state<number | ''>('');
+	let newPhrase = $state('');
+	let newPhraseGroup = $state<'operations' | 'emergency'>('operations');
 
 	const timezones = listTimezones();
 	const participationOptions: ParticipationState[] = ['entered', 'scratched', 'dns', 'dnf'];
@@ -205,6 +209,27 @@
 		cpName = '';
 		await run('Reporting checkpoint added.', () =>
 			addCheckpoint(app.eventId as Id, name, cpReports)
+		);
+	}
+
+	async function addPhrase() {
+		const text = newPhrase.trim();
+		if (!text) return;
+		newPhrase = '';
+		await run('Quick phrase added.', () =>
+			app.setQuickPhrases([...app.quickPhrases, { id: newId('qp-'), text, group: newPhraseGroup }])
+		);
+	}
+
+	async function editPhrase(phrase: QuickPhrase, text: string) {
+		await run('Quick phrase updated.', () =>
+			app.setQuickPhrases(app.quickPhrases.map((p) => (p.id === phrase.id ? { ...p, text } : p)))
+		);
+	}
+
+	async function removePhrase(phrase: QuickPhrase) {
+		await run('Quick phrase removed.', () =>
+			app.setQuickPhrases(app.quickPhrases.filter((p) => p.id !== phrase.id))
 		);
 	}
 
@@ -787,6 +812,58 @@
 	{/if}
 
 	<div class="card">
+		<h2>Quick phrases</h2>
+		<p class="small muted">
+			These are the one-press log entries on the Live and Emergency screens. They record what you
+			say happened — they send no request and notify no agency.
+		</p>
+		<ul class="plain small">
+			{#each app.quickPhrases as phrase (phrase.id)}
+				<li class="line">
+					<span class="badge dim">{phrase.group}</span>
+					<input
+						aria-label={`Text for quick phrase "${phrase.text}"`}
+						value={phrase.text}
+						onchange={(e) => editPhrase(phrase, e.currentTarget.value)}
+					/>
+					<button
+						class="small ghost"
+						aria-label={`Remove quick phrase "${phrase.text}"`}
+						onclick={() => removePhrase(phrase)}>Remove</button
+					>
+				</li>
+			{/each}
+		</ul>
+		<div class="row">
+			<div class="field">
+				<label for="qp-text">New phrase</label>
+				<input
+					id="qp-text"
+					bind:value={newPhrase}
+					onkeydown={(e) => e.key === 'Enter' && addPhrase()}
+				/>
+			</div>
+			<div class="field">
+				<label for="qp-group">Group</label>
+				<select id="qp-group" bind:value={newPhraseGroup}>
+					<option value="operations">Operations (Live screen)</option>
+					<option value="emergency">Emergency (both screens)</option>
+				</select>
+			</div>
+			<div class="field" style="flex:0 0 auto">
+				<button type="button" onclick={addPhrase} disabled={busy}>Add phrase</button>
+			</div>
+		</div>
+		<button
+			type="button"
+			class="ghost"
+			onclick={() => run('Quick phrases reset.', () => app.setQuickPhrases(DEFAULT_QUICK_PHRASES))}
+		>
+			Reset to the defaults
+		</button>
+	</div>
+
+	<div class="card">
 		<h2>Review prompt settings</h2>
 		<div class="field">
 			<label for="overdue">Overdue threshold (minutes after a start is heard)</label>
@@ -828,6 +905,10 @@
 		flex-wrap: wrap;
 		padding: 0.25rem 0;
 		border-bottom: 1px solid var(--line);
+	}
+	.line input {
+		flex: 1 1 12rem;
+		min-height: 2.6rem;
 	}
 	.inline {
 		display: inline-flex;
