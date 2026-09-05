@@ -1,3 +1,4 @@
+import { base } from '$app/paths';
 import { verifyDatabaseWritable } from '$lib/db/repo';
 import { getSetting, setSetting, SETTINGS_KEYS } from '$lib/db/settings';
 import { nowMs } from '$lib/time/clock';
@@ -64,10 +65,13 @@ export class Readiness {
 			return;
 		}
 		try {
-			const reg = await navigator.serviceWorker.register(
-				import.meta.env.DEV ? '/service-worker.js' : '/service-worker.js',
-				{ type: import.meta.env.DEV ? 'module' : 'classic' }
-			);
+			// Both the URL and the scope carry the deployment's base path, so the
+			// app works the same served from a domain root or from a subdirectory
+			// such as a GitHub Pages project site.
+			const reg = await navigator.serviceWorker.register(`${base}/service-worker.js`, {
+				type: import.meta.env.DEV ? 'module' : 'classic',
+				scope: `${base}/`
+			});
 			this.serviceWorkerState = reg.active ? 'active' : 'installing';
 			if (reg.waiting) this.updateWaiting = true;
 			reg.addEventListener('updatefound', () => {
