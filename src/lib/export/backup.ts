@@ -1,5 +1,6 @@
 import { getDb, SCHEMA_VERSION, type AnyDb } from '$lib/db/db';
 import { newId } from '$lib/domain/ids';
+import { toStorable } from '$lib/db/plain';
 import { nowMs } from '$lib/time/clock';
 import type {
 	AppSetting,
@@ -221,6 +222,8 @@ export async function restoreBackup(
 	appVersion: string,
 	db: AnyDb = getDb()
 ): Promise<RestoreResult> {
+	// The document may still be a reactive proxy from the file-picker screen.
+	doc = toStorable(doc);
 	const validation = validateBackup(doc);
 	if (!validation.valid) {
 		throw new Error(`Backup rejected: ${validation.errors.join(' ')}`);
@@ -456,6 +459,7 @@ export async function archiveBackup(
 	doc: BackupDocument,
 	db: AnyDb = getDb()
 ): Promise<ArchiveResult> {
+	doc = toStorable(doc);
 	const validation = validateBackup(doc);
 	if (!validation.valid) throw new Error(`Backup rejected: ${validation.errors.join(' ')}`);
 

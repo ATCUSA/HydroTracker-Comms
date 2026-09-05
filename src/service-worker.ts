@@ -15,10 +15,12 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `safety-log-${version}`;
 
 /**
- * The SPA fallback document. Navigations to any route resolve to it, so it must
- * be cached by name — it is not part of `build` or `files`.
+ * The SPA fallback document, addressed by the scope root rather than
+ * "index.html": static hosts and dev servers agree on "/" but not all of them
+ * serve the file name directly. It is not part of `build` or `files`, so it has
+ * to be precached explicitly or no route could be cold-opened offline.
  */
-const SHELL = new URL('./index.html', sw.location.href).pathname;
+const SHELL = new URL('./', sw.location.href).pathname;
 
 const PRECACHE = [...build, ...files, SHELL];
 

@@ -114,48 +114,76 @@ export function formatCoordinates(
 
 /**
  * Accepts the three display formats plus bare decimal pairs, in either
- * "hemisphere-prefix" or "trailing-hemisphere" order. Returns null when the
- * text cannot be read as a coordinate pair.
+ * hemisphere-prefix or trailing-hemisphere order. Returns null when the text
+ * cannot be read as a coordinate pair.
+ *
+ * The text is reduced to a token stream of hemisphere letters and numbers.
+ * Letters delimit the two axes when they are present; with no letters at all,
+ * an even run of numbers is split down the middle (2 = DD, 4 = DDM, 6 = DMS).
  */
 export function parseCoordinateText(text: string): Coordinates | null {
-	const cleaned = text
-		.replace(/[°′″]/g, (c) => (c === '°' ? ' ' : c === '′' ? "'" : '"'))
+	const tokens = text
+		.toUpperCase()
+		.replace(/[\u00B0\u00BA\u2032\u2033'"]/g, ' ')
 		.replace(/,/g, ' ')
-		.trim();
-	if (!cleaned) return null;
+		.match(/[NSEW]|[-+]?\d+(?:\.\d+)?/g);
+	if (!tokens) return null;
 
-	const tokenRe =
-		/([NSEW])?\s*(-?\d+(?:\.\d+)?)\s*(?:[^\dNSEW\-]*?(\d+(?:\.\d+)?)\s*'?)?\s*(?:(\d+(?:\.\d+)?)\s*"?)?\s*([NSEW])?/gi;
-	const found: Array<{ value: number; letter: string | null }> = [];
-	let m: RegExpExecArray | null;
-	while ((m = tokenRe.exec(cleaned)) !== null) {
-		if (!m[2]) continue;
-		if (m[0].trim() === '') continue;
-		const sign = m[2].startsWith('-') ? -1 : 1;
-		let value = Math.abs(Number(m[2]));
-		if (m[3] !== undefined) value += Number(m[3]) / 60;
-		if (m[4] !== undefined) value += Number(m[4]) / 3600;
-		const letter = (m[1] || m[5] || null)?.toUpperCase() ?? null;
-		found.push({ value: sign * value, letter });
-		if (found.length === 2) break;
+	const isLetter = (t: string) => t.length === 1 && 'NSEW'.includes(t);
+	const letters = tokens.filter(isLetter);
+	const numbers = tokens.filter((t) => !isLetter(t)).map(Number);
+	if (numbers.some((n) => !Number.isFinite(n))) return null;
+
+	interface Group {
+		nums: number[];
+		letter: string | null;
 	}
-	if (found.length < 2) return null;
+	let groups: Group[] = [];
 
-	let latEntry = found[0];
-	let lonEntry = found[1];
-	// Respect explicit hemisphere letters if they arrive in the other order.
-	if (latEntry.letter && 'EW'.includes(latEntry.letter)) {
-		[latEntry, lonEntry] = [lonEntry, latEntry];
+	if (letters.length >= 2) {
+		let current: Group = { nums: [], letter: null };
+		for (const token of tokens) {
+			if (isLetter(token)) {
+				if (current.nums.length === 0) {
+					current.letter = token;
+				} else if (!current.letter) {
+					current.letter = token;
+					groups.push(current);
+					current = { nums: [], letter: null };
+				} else {
+					groups.push(current);
+					current = { nums: [], letter: token };
+				}
+			} else {
+				current.nums.push(Number(token));
+			}
+		}
+		if (current.nums.length > 0) groups.push(current);
+	} else {
+		if (numbers.length === 0 || numbers.length % 2 !== 0 || numbers.length > 6) return null;
+		const half = numbers.length / 2;
+		groups = [
+			{ nums: numbers.slice(0, half), letter: letters[0] ?? null },
+			{ nums: numbers.slice(half), letter: null }
+		];
 	}
 
-	const applySign = (entry: { value: number; letter: string | null }, negLetter: string) => {
-		if (!entry.letter) return entry.value;
-		const magnitude = Math.abs(entry.value);
-		return entry.letter === negLetter ? -magnitude : magnitude;
+	if (groups.length < 2) return null;
+	let [latGroup, lonGroup] = groups;
+	// Respect explicit hemisphere letters when the axes arrive the other way round.
+	if (latGroup.letter && 'EW'.includes(latGroup.letter)) {
+		[latGroup, lonGroup] = [lonGroup, latGroup];
+	}
+
+	const toDegrees = (group: Group): number => {
+		const [d = 0, m = 0, s = 0] = group.nums;
+		const magnitude = Math.abs(d) + m / 60 + s / 3600;
+		if (group.letter) return 'SW'.includes(group.letter) ? -magnitude : magnitude;
+		return d < 0 ? -magnitude : magnitude;
 	};
 
-	const latitude = applySign(latEntry, 'S');
-	const longitude = applySign(lonEntry, 'W');
+	const latitude = toDegrees(latGroup);
+	const longitude = toDegrees(lonGroup);
 	if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) return null;
 	return { latitude, longitude };
 }

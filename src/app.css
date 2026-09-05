@@ -18,6 +18,9 @@
 	--radio: #4aa8ff;
 	--tap: 3.25rem;
 	--radius: 0.6rem;
+	/* Height reserved for the fixed bottom bar. Two rows on a phone (tabs plus
+	   the full-width emergency control), one row once there is room. */
+	--nav-h: 8.2rem;
 	color-scheme: dark;
 	font-family:
 		system-ui,
@@ -32,6 +35,22 @@
 * {
 	box-sizing: border-box;
 	-webkit-tap-highlight-color: transparent;
+}
+
+@media (min-width: 40rem) {
+	:root {
+		--nav-h: 4.7rem;
+	}
+}
+
+html {
+	/*
+	 * The bottom bar is fixed, so page content is padded clear of it and can
+	 * never be covered. This additionally keeps a field scrolled into view —
+	 * when the on-screen keyboard opens, say — above the bar rather than behind
+	 * it.
+	 */
+	scroll-padding-bottom: calc(var(--nav-h) + 1rem);
 }
 
 html,
@@ -161,6 +180,17 @@ label {
 }
 .row.tight > * {
 	flex: 0 0 auto;
+}
+/*
+ * Inputs default to width:100%, which in a tight row overflows the container
+ * and paints over the control beside it on a narrow screen. Size them to their
+ * content there instead.
+ */
+.row.tight > input,
+.row.tight > select,
+.row.tight > textarea {
+	width: auto;
+	max-width: 100%;
 }
 
 .card {

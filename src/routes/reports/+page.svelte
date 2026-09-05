@@ -10,6 +10,7 @@
 		archiveBackup,
 		restoreBackup,
 		validateBackup,
+		type ArchiveResult,
 		type BackupDocument,
 		type ValidationResult
 	} from '$lib/export/backup';
@@ -84,6 +85,10 @@
 				warnings: []
 			};
 			failure = 'The file could not be read. Your existing records are untouched.';
+		} finally {
+			// Clear the picker so choosing the same file again re-runs validation —
+			// re-importing one station's log is a normal thing to do.
+			input.value = '';
 		}
 	}
 
@@ -111,17 +116,23 @@
 
 	async function doArchive() {
 		if (!pendingDoc) return;
+		let outcome: ArchiveResult | null = null;
 		await attempt('Archive import', async () => {
-			const result = await archiveBackup(pendingDoc as BackupDocument);
-			status =
-				result.outcome === 'duplicate'
-					? `Identical backup already in the archive (imported ${formatDateTime(result.entry.importedAt, app.timezone)}). Nothing was added.`
-					: result.outcome === 'new-version'
-						? `Changed snapshot from ${result.entry.stationLabel} stored as version ${result.entry.snapshotVersion}. Earlier versions are kept.`
-						: `Log from ${result.entry.stationLabel} added to the archive.`;
+			outcome = await archiveBackup(pendingDoc as BackupDocument);
 			pendingDoc = null;
 			validation = null;
 		});
+		// Set after attempt() so its generic message does not overwrite the
+		// outcome, which is the part the operator actually needs to read.
+		if (outcome && !failure) {
+			const { entry, outcome: kind } = outcome as ArchiveResult;
+			status =
+				kind === 'duplicate'
+					? `Identical backup already in the archive (imported ${formatDateTime(entry.importedAt, app.timezone)}). Nothing was added.`
+					: kind === 'new-version'
+						? `Changed snapshot from ${entry.stationLabel} stored as version ${entry.snapshotVersion}. Earlier versions are kept.`
+						: `Log from ${entry.stationLabel} added to the archive.`;
+		}
 	}
 
 	function exportArchived(entry: ArchivedLog) {
@@ -349,10 +360,12 @@
 					Observed at this checkpoint: {printAcc.summary.observedHereCount} · Not observed here: {printAcc
 						.summary.unobservedHereCount} · Finish heard: {printAcc.summary.finishHeardCount} · DNF: {printAcc
 						.summary.dnfCount}
-					<br />
-					These counts describe what was observed and recorded here. They are not a statement that anyone
-					is physically safe or accounted for. "No finish heard" is not the same as DNF.
 				</p>
+				<p class="small">
+					These counts describe what was observed and recorded here. They are not a statement that
+					anyone is physically safe or accounted for.
+				</p>
+				<p class="small">"No finish heard" is not the same as DNF.</p>
 			</div>
 		{:else}
 			<p class="muted small no-print">Select a heat to render its checklist.</p>

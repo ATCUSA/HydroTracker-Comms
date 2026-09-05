@@ -173,7 +173,10 @@ export class AppState {
 		return this.incidents.filter((i) => i.status === 'open' && !i.voided);
 	}
 	get incidentActions(): IncidentAction[] {
-		return this.#incidentActions.value.sort((a, b) => a.sequence - b.sequence);
+		// Copy before sorting: Array.sort mutates in place, and mutating reactive
+		// state while a template reads it is a hard error in Svelte 5. Every other
+		// getter here sorts the fresh array that .filter() returns.
+		return [...this.#incidentActions.value].sort((a, b) => a.sequence - b.sequence);
 	}
 	actionsFor(incidentId: Id): IncidentAction[] {
 		return this.incidentActions.filter((a) => a.incidentId === incidentId && !a.voided);

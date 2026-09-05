@@ -1,5 +1,6 @@
 import type { Table } from 'dexie';
 import { getDb, type AnyDb } from './db';
+import { toStorable } from './plain';
 import { newId } from '$lib/domain/ids';
 import { nowMs, utcOffsetMinutes } from '$lib/time/clock';
 import type { AuditAction, AuditRevision, EpochMs, Id } from '$lib/domain/types';
@@ -108,7 +109,7 @@ export async function saveRecord<T extends { id: Id; updatedAt: EpochMs }>(
 		const existing = (await tableOf(db, table).get(record.id)) as
 			Record<string, unknown> | undefined;
 		const resolvedAction: AuditAction = action === 'update' && !existing ? 'create' : action;
-		const next = { ...record, updatedAt: at } as unknown as Record<string, unknown>;
+		const next = toStorable({ ...record, updatedAt: at }) as unknown as Record<string, unknown>;
 		const changes = resolvedAction === 'create' ? [] : diffRecords(existing, next);
 		const sequence = await nextSequence(db);
 		await tableOf(db, table).put(next);
@@ -118,7 +119,7 @@ export async function saveRecord<T extends { id: Id; updatedAt: EpochMs }>(
 			table,
 			recordId: record.id,
 			action: resolvedAction,
-			changes,
+			changes: toStorable(changes),
 			at,
 			operatorName: ctx.operatorName,
 			deviceId: ctx.deviceId,
@@ -144,7 +145,7 @@ export async function createRecord<T extends { id: Id; createdAt: EpochMs; updat
 	let created!: T;
 	await db.transaction('rw', [tableOf(db, table), db.revisions, db.settings], async () => {
 		const sequence = await nextSequence(db);
-		created = build({ id: newId(), at, sequence, offsetMinutes });
+		created = toStorable(build({ id: newId(), at, sequence, offsetMinutes }));
 		await tableOf(db, table).put(created as unknown as Record<string, unknown>);
 		await db.revisions.add({
 			id: newId('rev-'),

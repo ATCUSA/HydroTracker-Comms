@@ -177,6 +177,7 @@
 
 	async function onCreateHeat() {
 		if (!app.eventId || !heatName.trim()) return;
+		let copied: number | null = null;
 		await run('Heat created.', async () => {
 			const heat = await createHeat({
 				eventId: app.eventId as Id,
@@ -187,12 +188,15 @@
 			});
 			await app.setHeat(heat.id);
 			if (copySourceHeat) {
-				const count = await copyLineupInto(app.eventId as Id, copySourceHeat, heat.id);
-				message = `Heat created and ${count} boat(s) copied. Times, DNF and scratches were not copied.`;
+				copied = await copyLineupInto(app.eventId as Id, copySourceHeat, heat.id);
 			}
 			heatName = '';
 			copySourceHeat = '';
 		});
+		// Set after run() so its generic success message does not overwrite this.
+		if (copied !== null && !error) {
+			message = `Heat created and ${copied} boat(s) copied. Times, DNF and scratches were not copied.`;
+		}
 	}
 
 	async function onAddCheckpoint() {

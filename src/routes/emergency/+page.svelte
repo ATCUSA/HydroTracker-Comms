@@ -217,15 +217,17 @@
 					Copy responder text
 				</button>
 			</div>
-			<div class="field no-print">
-				<label for="manual">Enter coordinates manually</label>
-				<div class="row tight">
+			<div class="row no-print">
+				<div class="field">
+					<label for="manual">Enter coordinates manually</label>
 					<input
 						id="manual"
 						bind:value={manualCoords}
 						placeholder="45 31.404 N  122 40.572 W"
 						class="mono"
 					/>
+				</div>
+				<div class="field" style="flex: 0 0 auto">
 					<button type="button" onclick={useManual}>Save entered location</button>
 				</div>
 			</div>

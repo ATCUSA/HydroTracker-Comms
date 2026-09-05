@@ -113,35 +113,64 @@
 	}
 	main {
 		flex: 1;
-		padding: 0.8rem 0.8rem 1rem;
+		/* Reserve the fixed bar's height so no control is ever underneath it. */
+		padding: 0.8rem 0.8rem calc(var(--nav-h) + 0.5rem);
 		max-width: 60rem;
 		width: 100%;
 		margin: 0 auto;
 	}
 	nav {
-		position: sticky;
+		/*
+		 * Fixed rather than sticky: a sticky bar floats over whatever content
+		 * happens to be at the bottom of the viewport mid-scroll, which puts
+		 * capture controls out of reach. Fixed, with matching padding on main,
+		 * means the bar occupies its own band and covers nothing.
+		 */
+		position: fixed;
+		left: 0;
+		right: 0;
 		bottom: 0;
-		display: flex;
+		/* Keeps the capture and emergency controls clickable over long content
+		   such as the responder text block on a narrow screen. */
+		z-index: 10;
+		/*
+		 * A grid, not a horizontal scroller: on a phone-width screen a scrollable
+		 * bar can end up scrolled so that Live or Emergency is off-screen, which
+		 * is exactly what must not happen to an operator wearing gloves in the
+		 * rain. Every destination is always visible and reachable.
+		 */
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
 		gap: 0.3rem;
 		padding: 0.35rem 0.4rem calc(0.35rem + env(safe-area-inset-bottom));
 		background: var(--bg-sunken);
 		border-top: 1px solid var(--line);
-		overflow-x: auto;
+	}
+	/*
+	 * The page reserves scroll-padding for this bar. Cancel it on the bar's own
+	 * controls: scroll-margin is not inherited, and scrolling one of these into
+	 * view would otherwise chase a target it can never clear.
+	 */
+	nav a,
+	nav button {
+		scroll-margin-bottom: -12rem;
 	}
 	nav a {
-		flex: 1 1 auto;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		text-align: center;
+		min-width: 0;
 		min-height: 3rem;
-		padding: 0.3rem 0.6rem;
+		padding: 0.3rem 0.35rem;
 		border-radius: var(--radius);
 		border: 2px solid transparent;
 		color: var(--text-dim);
 		text-decoration: none;
 		font-weight: 600;
-		font-size: 0.8rem;
-		white-space: nowrap;
+		font-size: 0.78rem;
+		line-height: 1.1;
+		overflow-wrap: anywhere;
 	}
 	nav a.active {
 		color: var(--text);
@@ -149,18 +178,25 @@
 		background: var(--bg-raised);
 	}
 	.emergency {
-		flex: 0 0 auto;
-		min-width: 7.5rem;
+		/* Full width on its own row so it is never clipped or scrolled away. */
+		grid-column: 1 / -1;
 		background: var(--bad);
 		color: #2b0503;
 		border-color: var(--bad);
 		font-weight: 800;
 		letter-spacing: 0.06em;
 	}
-	@media (max-width: 30rem) {
+	@media (min-width: 40rem) {
+		nav {
+			grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(8rem, auto);
+		}
+		.emergency {
+			grid-column: auto;
+		}
+	}
+	@media (max-width: 26rem) {
 		nav a {
-			font-size: 0.72rem;
-			padding: 0.3rem 0.4rem;
+			font-size: 0.7rem;
 		}
 	}
 </style>
