@@ -1,5 +1,7 @@
 # Jet Boat Safety Log
 
+**Live demo:** <https://atcusa.github.io/HydroTracker-Comms/>
+
 An offline-first progressive web app for a **fixed safety-boat station** at a jet
 boat race. One operator, one checkpoint, one device: it records what that
 operator observed and heard on the radio — racer passages, starts and finishes,
@@ -202,8 +204,13 @@ at it: `CHROMIUM_PATH=/path/to/chromium npm run test:e2e`.
 ## Production build and HTTPS hosting
 
 ```bash
-npm run build
+npm run build                              # served from a domain root
+BASE_PATH=/HydroTracker-Comms npm run build  # served from a subdirectory
 ```
+
+`BASE_PATH` is baked in at build time. Set it whenever the site is served from
+a subdirectory rather than a domain root — a GitHub Pages project site lives at
+`/<repo>`.
 
 `build/` is a static site — plain files, no server-side code. Everything the app
 needs, including the spreadsheet import and export libraries, is bundled into
@@ -219,6 +226,12 @@ Pages, GitHub Pages, S3 + CloudFront, nginx). Two requirements:
    `Cache-Control: no-cache` so devices notice updates. Files under
    `_app/immutable/` are content-hashed and can be cached forever.
 
+The build also writes `build/404.html` as a copy of the app shell, so hosts
+with no SPA rewrite rule (GitHub Pages among them) still serve the app for a
+deep link. On such hosts the first visit to a deep link returns a 404 status
+with the correct page; once the service worker is installed it answers
+navigations from the cache and the status is 200.
+
 nginx:
 
 ```nginx
@@ -232,6 +245,17 @@ location /_app/immutable/ {
   add_header Cache-Control "public, max-age=31536000, immutable";
 }
 ```
+
+### Deploying to GitHub Pages
+
+`.github/workflows/deploy-pages.yml` type-checks, tests, builds with the right
+`BASE_PATH`, and publishes to the `gh-pages` branch on every push to the
+development branch. Pages is configured to serve that branch.
+
+It publishes by branch rather than through the Pages artifact API on purpose:
+creating or reconfiguring a Pages site needs repository-admin rights, which a
+workflow's `GITHUB_TOKEN` does not carry, so the artifact route fails with
+`Resource not accessible by integration` until someone enables Pages by hand.
 
 ### Updates never interrupt a live log
 

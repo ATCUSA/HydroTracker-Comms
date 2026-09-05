@@ -11,12 +11,10 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,22 +40,19 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}
         run: npm run build
 
-      # enablement turns Pages on for the repository the first time this runs,
-      # so no manual settings step is needed.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: build
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # Pages is served from the gh-pages branch. Publishing by branch rather
+      # than the Pages artifact API keeps the workflow within the permissions a
+      # GITHUB_TOKEN actually has: creating a Pages site needs repository admin,
+      # which the token does not carry.
+      - name: Publish to gh-pages
+        run: |
+          set -euo pipefail
+          cd build
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish ${GITHUB_SHA::7} to GitHub Pages"
+          git push -q --force \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            HEAD:gh-pages
