@@ -13,7 +13,14 @@ import { build, files, version } from '$service-worker';
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `safety-log-${version}`;
-const PRECACHE = [...build, ...files];
+
+/**
+ * The SPA fallback document. Navigations to any route resolve to it, so it must
+ * be cached by name — it is not part of `build` or `files`.
+ */
+const SHELL = new URL('./index.html', sw.location.href).pathname;
+
+const PRECACHE = [...build, ...files, SHELL];
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
@@ -81,7 +88,7 @@ sw.addEventListener('fetch', (event) => {
 				// SPA navigation offline: serve the cached shell so any route
 				// can be cold-opened with no network.
 				if (request.mode === 'navigate') {
-					const shell = (await cache.match('/index.html')) ?? (await cache.match('/'));
+					const shell = await cache.match(SHELL);
 					if (shell) return shell;
 				}
 				return new Response('Offline and this resource is not cached.', {
